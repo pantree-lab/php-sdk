@@ -258,6 +258,27 @@ function mergeContext(base, extra) {
     return out;
 }
 
+function captureAppCallerStack(label) {
+    try {
+        const err = new Error(label);
+        const lines = (err.stack || "")
+            .split("\n")
+            .map((l) => l.trim())
+            .filter(Boolean);
+        const filteredFrames = lines.filter(
+            (line) =>
+                line.startsWith("at ") &&
+                !line.includes("@pantree-lab/javascript-sdk") &&
+                !line.includes("node_modules\\@pantree-lab\\javascript-sdk") &&
+                !line.includes("node_modules/@pantree-lab/javascript-sdk"),
+        );
+        if (filteredFrames.length === 0) return undefined;
+        return [`Error: ${label}`, ...filteredFrames].join("\n");
+    } catch {
+        return undefined;
+    }
+}
+
 async function collectRuntimeContext() {
     const capturedAt = new Date().toISOString();
     const sdk = {
@@ -402,7 +423,8 @@ class PantreeClient {
     async captureMessage(message, extra = {}) {
         const resolvedTitle =
             extra?.title ?? (typeof message === "string" ? message : String(message));
-        return this.#send({ message, title: resolvedTitle, level: "info", ...extra });
+        const stack = extra?.stack ?? captureAppCallerStack(resolvedTitle);
+        return this.#send({ message, title: resolvedTitle, stack, level: "info", ...extra });
     }
 
     async #send(event) {

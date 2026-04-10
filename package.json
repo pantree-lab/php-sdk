@@ -1,6 +1,6 @@
 {
   "name": "@pantree-lab/javascript-sdk",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "Official JavaScript / Node.js SDK for Pantree — error monitoring and encrypted health reporting",
   "type": "module",
   "main": "./index.js",
