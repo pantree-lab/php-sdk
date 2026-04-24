@@ -46,7 +46,7 @@ async function createSignature(payload, secret) {
 const HEALTH_SALT = new TextEncoder().encode("pantree-health-v1");
 const HEALTH_INFO = new TextEncoder().encode("health-key");
 const SDK_NAME = "@pantree-lab/javascript-sdk";
-const SDK_VERSION = "0.1.12";
+const SDK_VERSION = "0.1.13";
 
 async function loadAppPackageMap() {
     try {

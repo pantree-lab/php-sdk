@@ -16,6 +16,22 @@ export interface PantreeInitOptions {
   release?: string | null;
   debug?: boolean;
   healthReporting?: boolean | PantreeHealthReportingOptions;
+  packages?: Record<string, string>;
+  git?: {
+    username?: string;
+    email?: string;
+    branch?: string;
+    repoUrl?: string;
+    commitHash?: string;
+    tag?: string;
+    commits?: Array<{
+      hash?: string;
+      authorName?: string;
+      authorEmail?: string;
+      date?: string;
+      message?: string;
+    }>;
+  };
 }
 
 export interface PantreeCapturedEvent {
