@@ -142,6 +142,26 @@ function sh(cmd, fallback = "") {
     }
 }
 
+function collectGitContext() {
+    const rawLog = sh("git log -10 --format=%H%x00%an%x00%ae%x00%ai%x00%s");
+    const commits = rawLog
+        ? rawLog.split("\n").filter(Boolean).map(line => {
+            const [hash, authorName, authorEmail, date, message] = line.split("\0");
+            return { hash, authorName, authorEmail, date, message };
+          })
+        : [];
+
+    return {
+        username:    sh("git config user.name")             || undefined,
+        email:       sh("git config user.email")            || undefined,
+        branch:      sh("git rev-parse --abbrev-ref HEAD")  || undefined,
+        repoUrl:     sh("git remote get-url origin")        || undefined,
+        commitHash:  sh("git rev-parse HEAD")               || undefined,
+        tag:         sh("git describe --tags --abbrev=0")   || undefined,
+        commits:     commits.length > 0 ? commits : undefined,
+    };
+}
+
 async function collectHealth(config) {
     const reportedAt = new Date().toISOString();
 
@@ -279,7 +299,7 @@ function captureAppCallerStack(label) {
     }
 }
 
-async function collectRuntimeContext() {
+async function collectRuntimeContext(config = null) {
     const capturedAt = new Date().toISOString();
     const sdk = {
         name: SDK_NAME,
@@ -287,7 +307,10 @@ async function collectRuntimeContext() {
     };
 
     if (isNode()) {
-        const { installedPackages } = await loadAppPackageMap();
+        const { installedPackages } = config?.packages
+            ? { installedPackages: config.packages }
+            : await loadAppPackageMap();
+        const gitInfo = config?.git ?? collectGitContext();
 
         return {
             sdk,
@@ -311,6 +334,7 @@ async function collectRuntimeContext() {
                         : undefined,
                 ...installedPackages,
             },
+            git: gitInfo,
         };
     }
 
@@ -330,7 +354,9 @@ async function collectRuntimeContext() {
         },
         packages: {
             sdk: `${sdk.name}@${sdk.version}`,
+            ...(config?.packages ?? {}),
         },
+        git: config?.git ?? undefined,
     };
 }
 
@@ -346,7 +372,9 @@ class PantreeClient {
      *   environment?: string,
      *   release?: string,
      *   debug?: boolean,
-     *   healthReporting?: boolean | { interval?: number }
+     *   healthReporting?: boolean | { interval?: number },
+     *   packages?: Record<string, string>,
+     *   git?: { username?: string, email?: string, branch?: string, repoUrl?: string, commitHash?: string, tag?: string, commits?: Array<{ hash: string, authorName: string, authorEmail: string, date: string, message: string }> }
      * }} options
      */
     init(options = {}) {
@@ -361,6 +389,8 @@ class PantreeClient {
             environment:     options.environment ?? "production",
             release:         options.release     ?? null,
             debug:           options.debug       ?? false,
+            packages:        options.packages    ?? null,
+            git:             options.git         ?? null,
         };
 
         if (this.#config.debug) console.log("[Pantree] Initialised →", endpoint);
@@ -433,7 +463,7 @@ class PantreeClient {
             return null;
         }
 
-        const context = mergeContext(await collectRuntimeContext(), event.context);
+        const context = mergeContext(await collectRuntimeContext(this.#config), event.context);
         const payload = JSON.stringify({
             message:     event.message,
             title:       event.title       ?? undefined,
