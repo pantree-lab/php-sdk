@@ -1,135 +1,163 @@
-﻿# API Reference — @pantree/js
+# API Reference — pantree/pantree-php
 
-## Default export — `Pantree` singleton
+---
 
-The recommended way to use the SDK. One shared `PantreeClient` instance for your entire application.
+## `PantreeClient` — Raw PHP
 
-```js
-import Pantree from "@pantree/js";
+### `PantreeClient::fromDsn(string $dsn, string $environment = 'production', bool $debug = false): self` _(static)_
+
+Preferred constructor. Parses a DSN and returns a configured client.
+
+```php
+$pantree = PantreeClient::fromDsn(
+    dsn:         'https://pk_xxx:sk_xxx@your-pantree.com/api/ingest',
+    environment: 'production',
+    debug:       false,
+);
 ```
 
 ---
 
-### `Pantree.init(options)`
+### `new PantreeClient(string $endpoint, string $projectKey, string $ingestSecret, string $environment = 'production', bool $debug = false)`
 
-Initialises the client. Must be called before any other method.
-
-```ts
-Pantree.init({
-  dsn:             string,                          // required
-  environment?:    string,                          // default: "production"
-  release?:        string,                          // default: null
-  debug?:          boolean,                         // default: false
-  healthReporting?: boolean | { interval?: number } // default: false
-})
-```
-
-Immediately sends an initial health report and starts the interval timer when `healthReporting` is truthy.
+Legacy constructor for backward compatibility.
 
 ---
 
-### `Pantree.captureException(err, extra?)`
+### `captureException(\Throwable $e, array $extra = []): array`
 
-Captures a thrown `Error` (or any value) and sends it to the ingest endpoint.
+Captures a throwable and sends it to the ingest endpoint.
 
-```js
-await Pantree.captureException(err);
-await Pantree.captureException(err, {
-  level:   "error",
-  user:    { id: "usr_1", email: "alice@example.com" },
-  context: { page: "/checkout" },
-});
+```php
+$pantree->captureException($e);
+$pantree->captureException($e, ['user' => ['id' => 1, 'email' => 'alice@example.com']]);
 ```
 
-Returns the server response JSON, or `null` on network failure.
+Returns `['status' => int, 'body' => array]`.
 
 ---
 
-### `Pantree.captureMessage(message, extra?)`
+### `captureMessage(string $message, string $level = 'info', array $extra = []): array`
 
-Captures an arbitrary string message.
+Captures an arbitrary message.
 
-```js
-await Pantree.captureMessage("Rate limit hit", { level: "warning" });
+```php
+$pantree->captureMessage('Cache miss rate high', 'warning');
 ```
+
+Valid levels: `error`, `warning`, `info`, `debug`.
 
 ---
 
-### `Pantree.sendHealthReport()`
+### `send(array $event): array`
 
-Immediately collects system information, encrypts it, and sends it to `/api/health-report`.
+Low-level method. Builds and signs the request, returns the raw response.
 
-```js
-const result = await Pantree.sendHealthReport();
-// { success: true }
+```php
+$pantree->send([
+    'message' => 'Something happened',
+    'level'   => 'info',
+    'context' => ['key' => 'value'],
+]);
 ```
 
-Returns the server response JSON, or `null` on failure.
+**Event fields:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `message` | string | Yes | Human-readable description |
+| `title` | string | No | Short error title / exception class |
+| `stack` | string | No | Stack trace string |
+| `level` | string | No | `error` / `warning` / `info` / `debug` |
+| `runtime` | string | No | e.g. `php`, `php-cli`, `laravel` |
+| `environment` | string | No | Overrides the configured environment |
+| `url` | string | No | Request URL (auto-detected from `$_SERVER`) |
+| `commit` | array | No | `['message' => ..., 'author' => ...]` |
+| `user` | array | No | `['id' => ..., 'email' => ...]` |
+| `breadcrumbs` | array | No | Ordered list of recent events |
+| `context` | array | No | Any additional key-value pairs |
 
 ---
 
-### `Pantree.stopHealthReporter()`
+### `sendHealthReport(): array`
 
-Clears the periodic health report timer. Call on graceful shutdown.
+Collects system info, encrypts it with AES-256-GCM, and posts to `/api/health-report`.
 
-```js
-Pantree.stopHealthReporter();
+```php
+$result = $pantree->sendHealthReport();
+// ['status' => 200, 'body' => ['success' => true]]
 ```
+
+Collected data: OS, memory, disk, local/public IP, machine ID, container detection, Git info.
 
 ---
 
-## Named exports
+## `Pantree` — Laravel Facade
 
-### `PantreeClient`
+All methods are static. The underlying `PantreeClient` is lazily instantiated from config on first call.
 
-The underlying class. Use when you need multiple isolated instances.
+### `Pantree::captureException(\Throwable $e, array $extra = []): array`
 
-```js
-import { PantreeClient } from "@pantree/js";
+```php
+use Pantree\Laravel\Pantree;
 
-const client = new PantreeClient();
-client.init({ dsn: "..." });
-await client.captureException(err);
-```
-
----
-
-### `parseDsn(dsn)`
-
-Parses a DSN string into its components.
-
-```js
-import { parseDsn } from "@pantree/js";
-
-const { apiKey, ingestSecret, endpoint, healthEndpoint, ipEndpoint } = parseDsn(dsn);
+Pantree::captureException($e);
+Pantree::captureException($e, [
+    'user'    => ['id' => auth()->id(), 'email' => auth()->user()?->email],
+    'context' => ['orderId' => $order->id],
+]);
 ```
 
 ---
 
-### `createPantreeSignature(payload, secret)`
+### `Pantree::captureMessage(string $message, string $level = 'info', array $extra = []): array`
 
-Computes the HMAC-SHA-256 hex signature used in the `x-pantree-signature` request header.
-
-```js
-import { createPantreeSignature } from "@pantree/js";
-
-const sig = await createPantreeSignature(JSON.stringify(payload), ingestSecret);
+```php
+Pantree::captureMessage('Slow queue job detected', 'warning', [
+    'context' => ['job' => ProcessPayment::class, 'durationMs' => 8500],
+]);
 ```
 
 ---
 
-### `encryptHealth(data, ingestSecret)`
+### `Pantree::sendHealthReport(): array`
 
-Encrypts an arbitrary object with AES-256-GCM using a key derived from `ingestSecret`.
+Manually send one health report. Useful in custom Artisan commands or scheduled tasks.
 
-```js
-import { encryptHealth } from "@pantree/js";
-
-const { iv, ciphertext } = await encryptHealth({ foo: "bar" }, ingestSecret);
+```php
+Pantree::sendHealthReport();
 ```
 
 ---
 
-### `sendPantreeEvent({ endpoint, projectKey, ingestSecret, event })` _(deprecated)_
+### `Pantree::reset(): void`
 
-Legacy function kept for backward compatibility. Use `Pantree.init()` + `captureException()` instead.
+Clears the internal singleton. Use in tests to reset state between test cases.
+
+```php
+Pantree::reset();
+```
+
+---
+
+## `PantreeServiceProvider` — Laravel
+
+Auto-discovered via `composer.json`. No manual registration required.
+
+**`register()`** — merges `config/pantree.php` defaults.
+
+**`boot()`**:
+- Registers `ExceptionHandler::reportable()` to automatically capture every exception that passes through Laravel's exception handler.
+- When `health_reporting = true`, registers a `Schedule::call()` every 30 minutes via `callAfterResolving(Schedule::class)`.
+
+### Config keys (`config/pantree.php`)
+
+| Key | Env var | Default | Description |
+|-----|---------|---------|-------------|
+| `dsn` | `PANTREE_DSN` | `''` | Full DSN string (preferred) |
+| `endpoint` | `PANTREE_ENDPOINT` | — | Used when DSN is empty |
+| `project_key` | `PANTREE_PROJECT_KEY` | `''` | Used when DSN is empty |
+| `ingest_secret` | `PANTREE_INGEST_SECRET` | `''` | Used when DSN is empty |
+| `environment` | `PANTREE_ENVIRONMENT` | `app()->environment()` | Deployment environment |
+| `health_reporting` | `PANTREE_HEALTH_REPORTING` | `false` | Auto-schedule health reports |
+| `debug` | `PANTREE_DEBUG` | `false` | Log debug info via `error_log` |

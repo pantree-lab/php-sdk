@@ -1,75 +1,79 @@
-﻿# Getting Started — @pantree/js
+﻿# Getting Started — pantree/pantree-php
 
-## Prerequisites
+## Requirements
 
-| Requirement | Version |
+| | Minimum |
 |---|---|
-| Node.js | ≥ 18 |
-| A Pantree instance | self-hosted or cloud |
+| PHP | 8.1 |
+| Extensions | `ext-curl`, `ext-openssl` |
+| Pantree | self-hosted or cloud |
 
 ## 1. Install
 
 ```bash
-npm install @pantree/js
+composer require pantree/pantree-php
 ```
 
 ## 2. Get your DSN
 
-1. Open your Pantree dashboard.
-2. Navigate to **Projects → [your project] → Settings**.
-3. Copy the **DSN** — it looks like:
+1. Open the Pantree dashboard.
+2. Go to **Projects → [your project] → Settings**.
+3. Copy the **DSN**:
    ```
    https://pk_abc123:sk_xyz789@your-pantree.com/api/ingest
    ```
 
-## 3. Initialise
+## 3. Configure
 
-```js
-// instrumentation.js  (or app entry point)
-import Pantree from "@pantree/js";
-
-Pantree.init({
-  dsn: process.env.PANTREE_DSN,
-  environment: process.env.NODE_ENV ?? "production",
-  release: process.env.npm_package_version,
-  debug: process.env.NODE_ENV === "development",
-});
-```
-
-Store your DSN in an environment variable — never hard-code secrets.
+Store the DSN in your environment — never commit secrets:
 
 ```env
 # .env
 PANTREE_DSN=https://pk_abc123:sk_xyz789@your-pantree.com/api/ingest
 ```
 
-## 4. Capture your first error
+Load it with your preferred method (e.g. `vlucas/phpdotenv`, a framework `.env` loader, or server environment variables).
 
-```js
-try {
-  await processPayment(order);
-} catch (err) {
-  await Pantree.captureException(err, {
-    user:    { id: session.userId },
-    context: { orderId: order.id },
-  });
-  throw err; // re-throw if needed
-}
-```
+## 4. Initialise and capture
 
-## 5. (Optional) Enable health reporting
+```php
+<?php
 
-```js
-Pantree.init({
-  dsn: process.env.PANTREE_DSN,
-  healthReporting: true,   // sends an encrypted report every 30 minutes
+require __DIR__ . '/vendor/autoload.php';
+
+use Pantree\PantreeClient;
+
+$pantree = PantreeClient::fromDsn($_ENV['PANTREE_DSN']);
+
+set_exception_handler(function (\Throwable $e) use ($pantree) {
+    $pantree->captureException($e);
 });
+
+// Your app code…
 ```
 
-See [health-reporting.md](./health-reporting.md) for details.
+## 5. Add health reporting (optional)
+
+Create a dedicated cron script:
+
+```php
+<?php
+// cron-health.php
+require __DIR__ . '/vendor/autoload.php';
+
+use Pantree\PantreeClient;
+
+$pantree = PantreeClient::fromDsn($_ENV['PANTREE_DSN']);
+$pantree->sendHealthReport();
+```
+
+Register it in crontab:
+
+```cron
+*/30 * * * *  php /var/www/html/cron-health.php
+```
 
 ## Next steps
 
 - [API Reference](./api-reference.md)
 - [Health Reporting](./health-reporting.md)
-- [Migration Guide](./migration.md)

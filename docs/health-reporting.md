@@ -1,86 +1,55 @@
-﻿# Health Reporting — @pantree/js
+﻿# Health Reporting — pantree/pantree-php
 
-Health reporting allows your Pantree server to monitor every running instance of your application — OS, memory, disk, network, and Git state — without exposing sensitive data to anyone other than super-admins.
+## Overview
 
-## How it works
+`sendHealthReport()` collects detailed system and Git information, encrypts it with AES-256-GCM, and sends it to your Pantree server's `/api/health-report` endpoint.
 
-```
-SDK                              Pantree Server
- │                                    │
- ├─ collect system info               │
- ├─ HKDF-SHA-256(ingestSecret) ──→ AES-256-GCM key
- ├─ AES-GCM encrypt(payload)         │
- └─ POST /api/health-report ────────→ store { iv, ciphertext }
-                                      │
-                          Super-admin requests Health Monitor
-                                      │
-                          server decrypts with same derived key
-                                      │
-                          displays OS, RAM, Git info, etc.
-```
+Only **super-admins** can decrypt and view this data. It is never stored in plain text.
 
-All encryption happens **on the SDK side** before the payload leaves the machine. The server stores only ciphertext.
-
-## Enabling
-
-```js
-Pantree.init({
-  dsn: "https://API_KEY:SECRET@your-pantree.com/api/ingest",
-  healthReporting: true,          // every 30 minutes
-});
-
-// Custom interval (milliseconds)
-Pantree.init({
-  dsn: "...",
-  healthReporting: { interval: 10 * 60 * 1000 },   // every 10 minutes
-});
-```
-
-The first report is sent **immediately** on `init()`, then on the configured interval.
-
-## Manual trigger
-
-```js
-const result = await Pantree.sendHealthReport();
-console.log(result);  // { success: true }
-```
-
-## Graceful shutdown
-
-```js
-process.on("SIGTERM", () => {
-  Pantree.stopHealthReporter();
-  process.exit(0);
-});
-```
-
-## Collected data
-
-### Node.js
-
-| Category | Fields |
-|---|---|
-| **OS** | platform, kernel release, architecture, hostname, uptime (seconds) |
-| **Memory** | total GB, free GB, used % (read from `/proc/meminfo` on Linux) |
-| **Disk** | total GB, free GB, used % (root filesystem) |
-| **Network** | local IP, public IP (via `/api/ip` on your server), MAC, interface |
-| **Machine** | `/etc/machine-id`, container/VM detection (`DOCKER_CONTAINER`, `KUBERNETES_SERVICE_HOST`) |
-| **Git** | username, email, commit hash, branch, tag, remote URL |
-| **Meta** | SDK version, Node version, ISO timestamp |
-
-### Browser
-
-In a browser context the SDK collects only `navigator.platform` and timestamp. Full system info is Node.js only.
-
-## Cryptography details
+## Encryption
 
 | Property | Value |
 |---|---|
-| Key derivation | HKDF-SHA-256 |
-| Salt | `"pantree-health-v1"` (UTF-8) |
-| Info | `"health-key"` (UTF-8) |
-| Output key | AES-256-GCM, 256-bit |
-| IV | 12 random bytes (per report) |
-| Auth tag | 16 bytes (appended to ciphertext) |
+| Key derivation | `hash_hkdf('sha256', $ingestSecret, 32, 'health-key', 'pantree-health-v1')` |
+| Cipher | AES-256-GCM |
+| IV | 12 random bytes (`random_bytes(12)`) |
+| Auth tag | 16 bytes (appended to ciphertext to match Web Crypto format) |
 | Encoding | Base64 |
-| API | Web Crypto (`crypto.subtle`) — no dependencies |
+
+## Calling manually
+
+```php
+$result = $pantree->sendHealthReport();
+// ['status' => 200, 'body' => ['success' => true]]
+```
+
+## Cron setup
+
+```cron
+# Every 30 minutes
+*/30 * * * *  php /var/www/html/cron-health.php >> /var/log/pantree.log 2>&1
+```
+
+```php
+<?php
+// cron-health.php
+require __DIR__ . '/vendor/autoload.php';
+use Pantree\PantreeClient;
+
+$pantree = PantreeClient::fromDsn(getenv('PANTREE_DSN'), debug: true);
+$result = $pantree->sendHealthReport();
+echo date('c') . ' health report: ' . ($result['status'] === 200 ? 'OK' : 'FAILED') . PHP_EOL;
+```
+
+## What is collected
+
+| Category | Method | Linux | Windows / macOS |
+|---|---|---|---|
+| OS | `php_uname()` | ✓ | ✓ |
+| RAM | `/proc/meminfo` | ✓ | falls back to `memory_limit` |
+| Disk | `disk_total_space('/')` | ✓ | ✓ |
+| Local IP | `gethostbyname()` | ✓ | ✓ |
+| Public IP | cURL → `/api/ip` on your server | ✓ | ✓ |
+| Machine ID | `/etc/machine-id` | ✓ | — |
+| Container | `/.dockerenv`, `KUBERNETES_SERVICE_HOST` | ✓ | — |
+| Git | `shell_exec('git ...')` | ✓ | ✓ |
