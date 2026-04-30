@@ -1,5 +1,4 @@
-﻿<?php
-
+<?php
 namespace Pantree;
 
 /**
@@ -84,7 +83,7 @@ class PantreeClient
     /** Low-level send method. */
     public function send(array $event): array
     {
-        $payload = json_encode(array_merge([
+        $payloadData = [
             'message'     => $event['message'] ?? '',
             'title'       => $event['title']       ?? null,
             'stack'       => $event['stack']       ?? null,
@@ -92,11 +91,17 @@ class PantreeClient
             'runtime'     => $event['runtime']     ?? 'php',
             'environment' => $event['environment'] ?? $this->environment,
             'url'         => $event['url']         ?? ($_SERVER['REQUEST_URI'] ?? null),
-            'commit'      => $event['commit']      ?? null,
             'user'        => $event['user']        ?? null,
             'breadcrumbs' => $event['breadcrumbs'] ?? null,
             'context'     => $event['context']     ?? null,
-        ]), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        ];
+
+        // API expects commit to be an object; do not send null/scalar values.
+        if (isset($event['commit']) && is_array($event['commit'])) {
+            $payloadData['commit'] = $event['commit'];
+        }
+
+        $payload = json_encode($payloadData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
         if ($payload === false) {
             throw new \RuntimeException('[Pantree] Failed to encode payload');
