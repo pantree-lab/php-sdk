@@ -47,6 +47,38 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Release
+    |--------------------------------------------------------------------------
+    | Tag the captured events with a release/version string (e.g. "v1.4.2").
+    | Appears in context.trace.release on every event.
+    */
+    'release' => env('PANTREE_RELEASE', null),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Git override  (optional — auto-detected from the repo by default)
+    |--------------------------------------------------------------------------
+    | Provide static git info when running in CI or environments without a
+    | .git directory.  Keys: branch, commitHash, tag, repoUrl, username, email.
+    | Example:
+    |   'git' => [
+    |       'branch'     => env('GIT_BRANCH'),
+    |       'commitHash' => env('GIT_COMMIT'),
+    |   ],
+    */
+    'git' => null,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Packages override  (optional — auto-detected via Composer by default)
+    |--------------------------------------------------------------------------
+    | Supply your own package map instead of the auto-detected Composer list.
+    | Example: ['laravel/framework' => '^11.0', 'my-pkg' => '1.0.0']
+    */
+    'packages' => null,
+
+    /*
+    |--------------------------------------------------------------------------
     | Debug
     |--------------------------------------------------------------------------
     */
