@@ -92,7 +92,7 @@ class PantreeClient
             'runtime'     => $event['runtime']     ?? 'php',
             'environment' => $event['environment'] ?? $this->environment,
             'url'         => $event['url']         ?? ($_SERVER['REQUEST_URI'] ?? null),
-            'breadcrumbs' => $event['breadcrumbs'] ?? null,
+            'breadcrumbs' => $event['breadcrumbs'] ?? [],
             'context'     => $event['context']     ?? null,
         ];
 
