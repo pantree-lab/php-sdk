@@ -84,6 +84,15 @@ class PantreeClient
     /** Low-level send method. */
     public function send(array $event): array
     {
+        $userContext = is_array($event['context'] ?? null) ? $event['context'] : [];
+        $autoContext = [
+            'sdk'      => $this->buildSdkContext(),
+            'packages' => $this->buildPackagesContext(),
+            'git'      => $this->buildGitContext(),
+        ];
+        // Auto-context fills gaps; explicit caller values always win.
+        $mergedContext = array_merge($autoContext, $userContext);
+
         $payloadData = [
             'message'     => $event['message'] ?? '',
             'title'       => $event['title']       ?? null,
@@ -93,7 +102,7 @@ class PantreeClient
             'environment' => $event['environment'] ?? $this->environment,
             'url'         => $event['url']         ?? ($_SERVER['REQUEST_URI'] ?? null),
             'breadcrumbs' => $event['breadcrumbs'] ?? [],
-            'context'     => $event['context']     ?? null,
+            'context'     => $mergedContext,
         ];
 
         // API expects commit to be an object; do not send null/scalar values.
@@ -148,6 +157,80 @@ class PantreeClient
         }
 
         return $this->httpHealth($this->healthEndpoint, $payload);
+    }
+
+    // ---------------------------------------------------------------- auto-context enrichment
+
+    private function buildSdkContext(): array
+    {
+        return ['name' => 'pantree-php', 'version' => '1.1.0'];
+    }
+
+    private function buildPackagesContext(): array
+    {
+        if (!class_exists(\Composer\InstalledVersions::class)) {
+            return [];
+        }
+        try {
+            $packages = [];
+            foreach (\Composer\InstalledVersions::getInstalledPackages() as $name) {
+                $version = \Composer\InstalledVersions::getPrettyVersion($name);
+                if ($version !== null) {
+                    $packages[$name] = $version;
+                }
+            }
+            return $packages;
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
+    private function buildGitContext(): array
+    {
+        $branch     = $this->git('git rev-parse --abbrev-ref HEAD');
+        $commitHash = $this->git('git rev-parse HEAD');
+        $tag        = $this->git('git describe --tags --abbrev=0');
+        $repoUrl    = $this->git('git remote get-url origin');
+        $username   = $this->git('git config user.name');
+        $email      = $this->git('git config user.email');
+
+        $ctx = array_filter([
+            'branch'     => $branch     ?: null,
+            'commitHash' => $commitHash ?: null,
+            'tag'        => $tag        ?: null,
+            'repoUrl'    => $repoUrl    ?: null,
+            'username'   => $username   ?: null,
+            'email'      => $email      ?: null,
+        ]);
+
+        if (empty($ctx)) {
+            return [];
+        }
+
+        // Last 10 commits for the commit history timeline
+        $logRaw = $this->git(
+            'git log -10 --pretty=format:"%H|||%an|||%ae|||%ai|||%s"'
+        );
+        if ($logRaw !== '') {
+            $commits = [];
+            foreach (explode("\n", $logRaw) as $line) {
+                $parts = explode('|||', $line, 5);
+                if (count($parts) === 5) {
+                    $commits[] = [
+                        'hash'        => $parts[0],
+                        'authorName'  => $parts[1],
+                        'authorEmail' => $parts[2],
+                        'date'        => $parts[3],
+                        'message'     => $parts[4],
+                    ];
+                }
+            }
+            if ($commits) {
+                $ctx['commits'] = $commits;
+            }
+        }
+
+        return $ctx;
     }
 
     // ---------------------------------------------------------------- health data collection
