@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace Pantree;
 
@@ -560,6 +560,8 @@ class PantreeClient
             CURLOPT_POSTFIELDS     => $payload,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT        => 10,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_SSL_VERIFYHOST => 0,
         ]);
 
         $response   = curl_exec($ch);
@@ -586,6 +588,8 @@ class PantreeClient
             CURLOPT_POSTFIELDS     => $payload,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT        => 10,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_SSL_VERIFYHOST => 0,
         ]);
 
         $response   = curl_exec($ch);
