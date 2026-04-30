@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 namespace Pantree;
 
 /**
@@ -91,7 +91,6 @@ class PantreeClient
             'runtime'     => $event['runtime']     ?? 'php',
             'environment' => $event['environment'] ?? $this->environment,
             'url'         => $event['url']         ?? ($_SERVER['REQUEST_URI'] ?? null),
-            'user'        => $event['user']        ?? null,
             'breadcrumbs' => $event['breadcrumbs'] ?? null,
             'context'     => $event['context']     ?? null,
         ];
@@ -99,6 +98,11 @@ class PantreeClient
         // API expects commit to be an object; do not send null/scalar values.
         if (isset($event['commit']) && is_array($event['commit'])) {
             $payloadData['commit'] = $event['commit'];
+        }
+
+        // API expects user to be an object; do not send null/scalar values.
+        if (isset($event['user']) && is_array($event['user'])) {
+            $payloadData['user'] = $event['user'];
         }
 
         $payload = json_encode($payloadData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
