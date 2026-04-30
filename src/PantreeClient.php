@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 namespace Pantree;
 
@@ -15,28 +15,37 @@ namespace Pantree;
  */
 class PantreeClient
 {
-    private string $endpoint;
-    private string $healthEndpoint;
-    private string $ipEndpoint;
-    private string $projectKey;
-    private string $ingestSecret;
-    private string $environment;
-    private bool   $debug;
+    private string  $endpoint;
+    private string  $healthEndpoint;
+    private string  $ipEndpoint;
+    private string  $projectKey;
+    private string  $ingestSecret;
+    private string  $environment;
+    private bool    $debug;
+    private ?string $release;
+    private ?array  $gitOverride;
+    private ?array  $packagesOverride;
 
     // ---------------------------------------------------------------- constructor
 
     public function __construct(
-        string $endpoint,
-        string $projectKey,
-        string $ingestSecret,
-        string $environment = 'production',
-        bool   $debug       = false
+        string  $endpoint,
+        string  $projectKey,
+        string  $ingestSecret,
+        string  $environment      = 'production',
+        bool    $debug            = false,
+        ?string $release          = null,
+        ?array  $gitOverride      = null,
+        ?array  $packagesOverride = null
     ) {
-        $this->endpoint      = rtrim($endpoint, '/');
-        $this->projectKey    = $projectKey;
-        $this->ingestSecret  = $ingestSecret;
-        $this->environment   = $environment;
-        $this->debug         = $debug;
+        $this->endpoint          = rtrim($endpoint, '/');
+        $this->projectKey        = $projectKey;
+        $this->ingestSecret      = $ingestSecret;
+        $this->environment       = $environment;
+        $this->debug             = $debug;
+        $this->release           = $release;
+        $this->gitOverride       = $gitOverride;
+        $this->packagesOverride  = $packagesOverride;
 
         // Derive companion endpoints from ingest endpoint base
         $base = (string) preg_replace('#/api/ingest$#', '', $this->endpoint);
@@ -46,9 +55,12 @@ class PantreeClient
 
     /** Construct from a DSN string: https://apiKey:ingestSecret@host/api/ingest */
     public static function fromDsn(
-        string $dsn,
-        string $environment = 'production',
-        bool   $debug       = false
+        string  $dsn,
+        string  $environment      = 'production',
+        bool    $debug            = false,
+        ?string $release          = null,
+        ?array  $gitOverride      = null,
+        ?array  $packagesOverride = null
     ): self {
         $parts = parse_url($dsn);
         if (!$parts || empty($parts['user']) || empty($parts['pass'])) {
@@ -59,7 +71,16 @@ class PantreeClient
         $port     = isset($parts['port']) ? ':' . $parts['port'] : '';
         $path     = $parts['path']   ?? '/api/ingest';
         $endpoint = "{$scheme}://{$host}{$port}{$path}";
-        return new self($endpoint, urldecode($parts['user']), urldecode($parts['pass']), $environment, $debug);
+        return new self(
+            $endpoint,
+            urldecode($parts['user']),
+            urldecode($parts['pass']),
+            $environment,
+            $debug,
+            $release,
+            $gitOverride,
+            $packagesOverride,
+        );
     }
 
     // ---------------------------------------------------------------- error capture
@@ -78,13 +99,23 @@ class PantreeClient
     /** Capture an arbitrary message. */
     public function captureMessage(string $message, string $level = 'info', array $extra = []): array
     {
-        return $this->send(array_merge(['message' => $message, 'level' => $level], $extra));
+        $stack = $extra['stack'] ?? $this->captureCallerStack($message);
+        return $this->send(array_merge([
+            'message' => $message,
+            'title'   => $message,
+            'level'   => $level,
+            'stack'   => $stack ?: null,
+        ], $extra));
     }
 
     /** Low-level send method. */
     public function send(array $event): array
     {
-        $payload = json_encode(array_merge([
+        $autoContext = $this->buildRuntimeContext();
+        $userContext = is_array($event['context'] ?? null) ? $event['context'] : [];
+        $mergedContext = $this->mergeContext($autoContext, $userContext);
+
+        $payloadData = [
             'message'     => $event['message'] ?? '',
             'title'       => $event['title']       ?? null,
             'stack'       => $event['stack']       ?? null,
@@ -92,11 +123,29 @@ class PantreeClient
             'runtime'     => $event['runtime']     ?? 'php',
             'environment' => $event['environment'] ?? $this->environment,
             'url'         => $event['url']         ?? ($_SERVER['REQUEST_URI'] ?? null),
-            'commit'      => $event['commit']      ?? null,
-            'user'        => $event['user']        ?? null,
-            'breadcrumbs' => $event['breadcrumbs'] ?? null,
-            'context'     => $event['context']     ?? null,
-        ]), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            'breadcrumbs' => $event['breadcrumbs'] ?? [],
+            'context'     => $mergedContext,
+        ];
+
+        // Auto-populate commit from git config when not explicitly provided
+        if (!isset($event['commit'])) {
+            $git = $mergedContext['git'] ?? [];
+            if (!empty($git['username']) || !empty($git['email'])) {
+                $payloadData['commit'] = array_filter([
+                    'author' => $git['username'] ?? null,
+                    'email'  => $git['email']    ?? null,
+                ]);
+            }
+        } elseif (is_array($event['commit'])) {
+            $payloadData['commit'] = $event['commit'];
+        }
+
+        // API expects user to be an object; do not send null/scalar values.
+        if (isset($event['user']) && is_array($event['user'])) {
+            $payloadData['user'] = $event['user'];
+        }
+
+        $payload = json_encode($payloadData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
         if ($payload === false) {
             throw new \RuntimeException('[Pantree] Failed to encode payload');
@@ -138,6 +187,161 @@ class PantreeClient
         }
 
         return $this->httpHealth($this->healthEndpoint, $payload);
+    }
+
+    // ---------------------------------------------------------------- auto-context enrichment
+
+    private function buildRuntimeContext(): array
+    {
+        $git = $this->gitOverride !== null ? $this->gitOverride : $this->buildGitContext();
+
+        return [
+            'sdk'      => ['name' => 'pantree-php', 'version' => '1.1.0'],
+            'trace'    => array_filter([
+                'source'      => 'pantree-php',
+                'runtime'     => 'php',
+                'capturedAt'  => (new \DateTime())->format(\DateTime::ATOM),
+                'release'     => $this->release,
+            ]),
+            'runtime'  => [
+                'phpVersion' => PHP_VERSION,
+                'sapi'       => PHP_SAPI,
+            ],
+            'os'       => [
+                'platform' => PHP_OS_FAMILY,
+                'arch'     => php_uname('m'),
+            ],
+            'packages' => $this->buildPackagesContext(),
+            'git'      => $git,
+        ];
+    }
+
+    private function buildPackagesContext(): array
+    {
+        if ($this->packagesOverride !== null) {
+            return $this->packagesOverride;
+        }
+
+        if (!class_exists(\Composer\InstalledVersions::class)) {
+            return [];
+        }
+
+        try {
+            // sdk entry first, matching JS SDK behaviour
+            $packages = ['sdk' => 'pantree-php@1.1.0'];
+            foreach (\Composer\InstalledVersions::getInstalledPackages() as $name) {
+                $version = \Composer\InstalledVersions::getPrettyVersion($name);
+                if ($version !== null) {
+                    $packages[$name] = $version;
+                }
+            }
+
+            // Cap at 250 entries (excluding the sdk sentinel), same as JS SDK
+            $appPackages = array_slice(
+                array_filter($packages, fn($k) => $k !== 'sdk', ARRAY_FILTER_USE_KEY),
+                0, 250, true,
+            );
+            $overflow = count($packages) - 1 - count($appPackages); // -1 for sdk entry
+            if ($overflow > 0) {
+                $appPackages['__truncated'] = "true ({$overflow} more)";
+            }
+
+            return ['sdk' => 'pantree-php@1.1.0'] + $appPackages;
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
+    private function buildGitContext(): array
+    {
+        $branch     = $this->git('git rev-parse --abbrev-ref HEAD');
+        $commitHash = $this->git('git rev-parse HEAD');
+        $tag        = $this->git('git describe --tags --abbrev=0');
+        $repoUrl    = $this->git('git remote get-url origin');
+        $username   = $this->git('git config user.name');
+        $email      = $this->git('git config user.email');
+
+        $ctx = array_filter([
+            'branch'     => $branch     ?: null,
+            'commitHash' => $commitHash ?: null,
+            'tag'        => $tag        ?: null,
+            'repoUrl'    => $repoUrl    ?: null,
+            'username'   => $username   ?: null,
+            'email'      => $email      ?: null,
+        ]);
+
+        if (empty($ctx)) {
+            return [];
+        }
+
+        // Last 10 commits for the commit history timeline
+        $logRaw = $this->git(
+            'git log -10 --pretty=format:%H|||%an|||%ae|||%ai|||%s'
+        );
+        if ($logRaw !== '') {
+            $commits = [];
+            foreach (explode("\n", $logRaw) as $line) {
+                $parts = explode('|||', $line, 5);
+                if (count($parts) === 5) {
+                    $commits[] = [
+                        'hash'        => $parts[0],
+                        'authorName'  => $parts[1],
+                        'authorEmail' => $parts[2],
+                        'date'        => $parts[3],
+                        'message'     => $parts[4],
+                    ];
+                }
+            }
+            if ($commits) {
+                $ctx['commits'] = $commits;
+            }
+        }
+
+        return $ctx;
+    }
+
+    /**
+     * Build a synthetic stack trace from the current call site, filtering out
+     * SDK-internal frames. Mirrors JS captureAppCallerStack().
+     */
+    private function captureCallerStack(string $label): string
+    {
+        $frames = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
+        $lines  = [];
+        foreach ($frames as $frame) {
+            $file = $frame['file'] ?? '';
+            if (str_contains($file, 'pantree-php')) continue;
+            $line  = $frame['line'] ?? 0;
+            $fn    = isset($frame['class'])
+                ? "{$frame['class']}{$frame['type']}{$frame['function']}"
+                : ($frame['function'] ?? '{main}');
+            $lines[] = "\tat {$fn} ({$file}:{$line})";
+        }
+        if (empty($lines)) return '';
+        return "Error: {$label}\n" . implode("\n", $lines);
+    }
+
+    /**
+     * Deep merge $extra into $base.
+     * Nested objects are merged key-by-key; all other values in $extra win.
+     * Mirrors JS mergeContext().
+     */
+    private function mergeContext(array $base, array $extra): array
+    {
+        $out = $base;
+        foreach ($extra as $k => $v) {
+            if (
+                is_array($v) &&
+                isset($out[$k]) &&
+                is_array($out[$k]) &&
+                array_keys($v) !== range(0, count($v) - 1) // associative only
+            ) {
+                $out[$k] = array_merge($out[$k], $v);
+            } else {
+                $out[$k] = $v;
+            }
+        }
+        return $out;
     }
 
     // ---------------------------------------------------------------- health data collection
@@ -292,7 +496,8 @@ class PantreeClient
     private function git(string $cmd): string
     {
         try {
-            $out = @shell_exec($cmd . ' 2>/dev/null');
+            $null = PHP_OS_FAMILY === 'Windows' ? '2>NUL' : '2>/dev/null';
+            $out  = @shell_exec($cmd . ' ' . $null);
             return $out !== null ? trim($out) : '';
         } catch (\Throwable) {
             return '';

@@ -22,12 +22,19 @@ class Pantree
     private static function client(): PantreeClient
     {
         if (self::$client === null) {
+            $release  = config('pantree.release')  ?: null;
+            $git      = config('pantree.git')      ?: null;
+            $packages = config('pantree.packages') ?: null;
+
             $dsn = config('pantree.dsn');
             if ($dsn) {
                 self::$client = PantreeClient::fromDsn(
                     $dsn,
                     config('pantree.environment', app()->environment()),
                     config('pantree.debug', false),
+                    $release,
+                    $git,
+                    $packages,
                 );
             } else {
                 self::$client = new PantreeClient(
@@ -36,6 +43,9 @@ class Pantree
                     config('pantree.ingest_secret', ''),
                     config('pantree.environment', app()->environment()),
                     config('pantree.debug', false),
+                    $release,
+                    $git,
+                    $packages,
                 );
             }
         }
