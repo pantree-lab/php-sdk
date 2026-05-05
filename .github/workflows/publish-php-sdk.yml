@@ -38,7 +38,7 @@ jobs:
               fwrite(STDERR, "Invalid composer.json\n");
               exit(1);
           }
-          $current = $json["version"] ?? "0.0.0";
+          $current = $json["version"] ?? "1.0.1";
           if (!preg_match("/^\d+\.\d+\.\d+$/", $current)) {
               fwrite(STDERR, "version must be semver (x.y.z), got: {$current}\n");
               exit(1);
