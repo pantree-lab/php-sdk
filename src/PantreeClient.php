@@ -516,7 +516,7 @@ class PantreeClient
     private function encryptHealth(array $data): array
     {
         // HKDF key derivation — same parameters as JS/server side
-        $key = hash_hkdf('sha256', $this->ingestSecret, 32, 'health-key', 'pantree-health-v1', true);
+        $key = hash_hkdf('sha256', $this->ingestSecret, 32, 'health-key', 'pantree-health-v1');
 
         // 12-byte random IV
         $iv = random_bytes(12);
