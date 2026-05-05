@@ -41,7 +41,7 @@ class PantreeServiceProvider extends ServiceProvider
         if (config('pantree.health_reporting', false)) {
             $this->callAfterResolving(Schedule::class, function (Schedule $schedule) {
                 $schedule->call(fn () => Pantree::sendHealthReport())
-                    ->everyThirtyMinutes()
+                    ->everyTenMinutes()
                     ->name('pantree:health-report')
                     ->withoutOverlapping();
             });

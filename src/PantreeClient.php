@@ -161,9 +161,9 @@ class PantreeClient
      * Collect system + git information, encrypt it with AES-256-GCM,
      * and POST to /api/health-report.
      *
-     * Call this from a cron job every 30 minutes:
-     *   * / 30 * * * *   php artisan pantree:health   (Laravel)
-     *   * / 30 * * * *   php /path/to/health.php     (plain PHP)
+     * Call this from a cron job every 10 minutes:
+     *   * / 10 * * * *   php artisan pantree:health   (Laravel)
+     *   * / 10 * * * *   php /path/to/health.php     (plain PHP)
      */
     public function sendHealthReport(): array
     {

@@ -35,7 +35,7 @@ return [
     | Health Reporting
     |--------------------------------------------------------------------------
     | Set to true to automatically send an encrypted system health report
-    | every 30 minutes via Laravel's task scheduler.
+    | every 10 minutes via Laravel's task scheduler.
     |
     | The report includes: OS, RAM, disk, IP, MAC, machine ID, container
     | detection, and Git trace — encrypted with AES-256-GCM before sending.
