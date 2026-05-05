@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 /**
  * Pantree PHP SDK — basic usage example
