@@ -1,29 +1,30 @@
 {
-  "name": "pantree/pantree-php",
-  "description": "PHP & Laravel SDK for Pantree — error monitoring and encrypted health reporting",
-  "type": "library",
-  "license": "MIT",
-  "autoload": {
-    "psr-4": {
-      "Pantree\\": "src/"
-    }
-  },
-  "extra": {
-    "laravel": {
-      "providers": [
-        "Pantree\\Laravel\\PantreeServiceProvider"
-      ]
-    }
-  },
-  "require": {
-    "php": ">=8.1",
-    "ext-curl": "*",
-    "ext-openssl": "*"
-  },
-  "suggest": {
-    "illuminate/support": "Required for Laravel integration (^10.0|^11.0|^12.0)",
-    "illuminate/http": "Required for Laravel integration (^10.0|^11.0|^12.0)"
-  },
-  "minimum-stability": "stable",
-  "prefer-stable": true
+    "name": "pantree/pantree-php",
+    "description": "PHP & Laravel SDK for Pantree \u2014 error monitoring and encrypted health reporting",
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "Pantree\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Pantree\\Laravel\\PantreeServiceProvider"
+            ]
+        }
+    },
+    "require": {
+        "php": ">=8.1",
+        "ext-curl": "*",
+        "ext-openssl": "*"
+    },
+    "suggest": {
+        "illuminate/support": "Required for Laravel integration (^10.0|^11.0|^12.0)",
+        "illuminate/http": "Required for Laravel integration (^10.0|^11.0|^12.0)"
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true,
+    "version": "0.0.1"
 }
