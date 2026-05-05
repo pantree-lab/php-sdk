@@ -66,9 +66,15 @@ jobs:
           git push origin "v${SDK_VERSION}"
 
       - name: Notify Packagist (optional)
-        if: ${{ secrets.PACKAGIST_USERNAME != '' && secrets.PACKAGIST_TOKEN != '' }}
         run: |
+          if [ -z "$PACKAGIST_USERNAME" ] || [ -z "$PACKAGIST_TOKEN" ]; then
+            echo "PACKAGIST_USERNAME or PACKAGIST_TOKEN missing; skipping Packagist notify."
+            exit 0
+          fi
           curl --fail-with-body -X POST \
             -H "content-type:application/json" \
             -d "{\"repository\":{\"url\":\"https://github.com/${{ github.repository }}\"}}" \
-            "https://packagist.org/api/update-package?username=${{ secrets.PACKAGIST_USERNAME }}&apiToken=${{ secrets.PACKAGIST_TOKEN }}"
+            "https://packagist.org/api/update-package?username=${PACKAGIST_USERNAME}&apiToken=${PACKAGIST_TOKEN}"
+        env:
+          PACKAGIST_USERNAME: ${{ secrets.PACKAGIST_USERNAME }}
+          PACKAGIST_TOKEN: ${{ secrets.PACKAGIST_TOKEN }}
