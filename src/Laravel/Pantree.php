@@ -35,6 +35,8 @@ class Pantree
                     $release,
                     $git,
                     $packages,
+                    (int) config('pantree.health_min_interval_seconds', 600),
+                    config('pantree.health_state_path'),
                 );
             } else {
                 self::$client = new PantreeClient(
@@ -46,6 +48,8 @@ class Pantree
                     $release,
                     $git,
                     $packages,
+                    (int) config('pantree.health_min_interval_seconds', 600),
+                    config('pantree.health_state_path'),
                 );
             }
         }
@@ -70,7 +74,23 @@ class Pantree
      */
     public static function sendHealthReport(): array
     {
-        return self::client()->sendHealthReport();
+        $result = self::client()->sendHealthReport();
+        if (
+            config('pantree.health_reject_too_soon', true) &&
+            ($result['body']['skipped'] ?? false) === true &&
+            ($result['body']['reason'] ?? null) === 'health-report-throttled'
+        ) {
+            return [
+                'status' => 429,
+                'body' => [
+                    'success' => false,
+                    'message' => 'Health report throttled. Minimum interval is 10 minutes.',
+                    'retry_after_seconds' => $result['body']['retry_after_seconds'] ?? 600,
+                ],
+            ];
+        }
+
+        return $result;
     }
 
     /** Reset the singleton (useful in tests). */

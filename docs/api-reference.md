@@ -81,14 +81,16 @@ $pantree->send([
 
 ### `sendHealthReport(): array`
 
-Collects system info, encrypts it with AES-256-GCM, and posts to `/api/health-report`.
+Collects system info, encrypts it with AES-256-GCM, and posts to `/api/health-report` unless the configured health threshold has not elapsed.
 
 ```php
 $result = $pantree->sendHealthReport();
 // ['status' => 200, 'body' => ['success' => true]]
+// or ['status' => 200, 'body' => ['success' => true, 'skipped' => true, 'reason' => 'health-report-throttled']]
 ```
 
 Collected data: OS, memory, disk, local/public IP, machine ID, container detection, Git info.
+The core client persists the last health report timestamp and throttles health reports to at most once every 10 minutes by default. Error capture is not throttled.
 
 ---
 
@@ -122,7 +124,7 @@ Pantree::captureMessage('Slow queue job detected', 'warning', [
 
 ### `Pantree::sendHealthReport(): array`
 
-Manually send one health report. Useful in custom Artisan commands or scheduled tasks.
+Manually send one health report. Useful in custom Artisan commands or scheduled tasks. Laravel uses the same SDK-level threshold, so calling this from `AppServiceProvider::boot()` will not create a report on every request.
 
 ```php
 Pantree::sendHealthReport();
@@ -148,7 +150,7 @@ Auto-discovered via `composer.json`. No manual registration required.
 
 **`boot()`**:
 - Registers `ExceptionHandler::reportable()` to automatically capture every exception that passes through Laravel's exception handler.
-- When `health_reporting = true`, registers a `Schedule::call()` every 30 minutes via `callAfterResolving(Schedule::class)`.
+- When `health_reporting = true`, registers a `Schedule::call()` every 10 minutes via `callAfterResolving(Schedule::class)`.
 
 ### Config keys (`config/pantree.php`)
 
@@ -160,4 +162,7 @@ Auto-discovered via `composer.json`. No manual registration required.
 | `ingest_secret` | `PANTREE_INGEST_SECRET` | `''` | Used when DSN is empty |
 | `environment` | `PANTREE_ENVIRONMENT` | `app()->environment()` | Deployment environment |
 | `health_reporting` | `PANTREE_HEALTH_REPORTING` | `false` | Auto-schedule health reports |
+| `health_min_interval_seconds` | `PANTREE_HEALTH_MIN_INTERVAL_SECONDS` | `600` | Minimum seconds between health reports |
+| `health_state_path` | `PANTREE_HEALTH_STATE_PATH` | storage cache path | File used to persist the last health report timestamp |
+| `health_reject_too_soon` | `PANTREE_HEALTH_REJECT_TOO_SOON` | `false` | Laravel facade quietly skips throttled reports by default |
 | `debug` | `PANTREE_DEBUG` | `false` | Log debug info via `error_log` |

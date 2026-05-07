@@ -25,6 +25,8 @@ class PantreeClient
     private ?string $release;
     private ?array  $gitOverride;
     private ?array  $packagesOverride;
+    private int     $healthMinIntervalSeconds;
+    private ?string $healthStatePath;
 
     // ---------------------------------------------------------------- constructor
 
@@ -36,7 +38,9 @@ class PantreeClient
         bool    $debug            = false,
         ?string $release          = null,
         ?array  $gitOverride      = null,
-        ?array  $packagesOverride = null
+        ?array  $packagesOverride = null,
+        int     $healthMinIntervalSeconds = 600,
+        ?string $healthStatePath = null
     ) {
         $this->endpoint          = rtrim($endpoint, '/');
         $this->projectKey        = $projectKey;
@@ -46,6 +50,8 @@ class PantreeClient
         $this->release           = $release;
         $this->gitOverride       = $gitOverride;
         $this->packagesOverride  = $packagesOverride;
+        $this->healthMinIntervalSeconds = $healthMinIntervalSeconds;
+        $this->healthStatePath = $healthStatePath;
 
         // Derive companion endpoints from ingest endpoint base
         $base = (string) preg_replace('#/api/ingest$#', '', $this->endpoint);
@@ -60,7 +66,9 @@ class PantreeClient
         bool    $debug            = false,
         ?string $release          = null,
         ?array  $gitOverride      = null,
-        ?array  $packagesOverride = null
+        ?array  $packagesOverride = null,
+        int     $healthMinIntervalSeconds = 600,
+        ?string $healthStatePath = null
     ): self {
         $parts = parse_url($dsn);
         if (!$parts || empty($parts['user']) || empty($parts['pass'])) {
@@ -80,6 +88,8 @@ class PantreeClient
             $release,
             $gitOverride,
             $packagesOverride,
+            $healthMinIntervalSeconds,
+            $healthStatePath,
         );
     }
 
@@ -167,6 +177,19 @@ class PantreeClient
      */
     public function sendHealthReport(): array
     {
+        $gate = $this->healthReportGate();
+        if ($gate['allowed'] === false) {
+            return [
+                'status' => 200,
+                'body' => [
+                    'success' => true,
+                    'skipped' => true,
+                    'reason' => 'health-report-throttled',
+                    'retry_after_seconds' => $gate['retry_after_seconds'],
+                ],
+            ];
+        }
+
         $health = $this->collectHealth();
         $reportedAt = $health['meta']['reportedAt'] ?? date('c');
 
@@ -187,6 +210,60 @@ class PantreeClient
         }
 
         return $this->httpHealth($this->healthEndpoint, $payload);
+    }
+
+    private function healthReportGate(): array
+    {
+        if ($this->healthMinIntervalSeconds <= 0) {
+            return ['allowed' => true, 'retry_after_seconds' => 0];
+        }
+
+        $statePath = $this->healthStatePath ?: $this->defaultHealthStatePath();
+        $stateDir = dirname($statePath);
+        if (!is_dir($stateDir)) {
+            @mkdir($stateDir, 0775, true);
+        }
+
+        $file = @fopen($statePath, 'c+');
+        if ($file === false) {
+            return ['allowed' => true, 'retry_after_seconds' => 0];
+        }
+
+        try {
+            if (!flock($file, LOCK_EX)) {
+                return ['allowed' => true, 'retry_after_seconds' => 0];
+            }
+
+            rewind($file);
+            $raw = stream_get_contents($file);
+            $state = is_string($raw) && $raw !== '' ? json_decode($raw, true) : [];
+            $lastTs = (int) ($state['last_health_report_ts'] ?? 0);
+            $nowTs = time();
+            $nextAllowedTs = $lastTs + $this->healthMinIntervalSeconds;
+
+            if ($lastTs > 0 && $nowTs < $nextAllowedTs) {
+                return [
+                    'allowed' => false,
+                    'retry_after_seconds' => max(1, $nextAllowedTs - $nowTs),
+                ];
+            }
+
+            rewind($file);
+            ftruncate($file, 0);
+            fwrite($file, json_encode(['last_health_report_ts' => $nowTs], JSON_UNESCAPED_SLASHES));
+            fflush($file);
+
+            return ['allowed' => true, 'retry_after_seconds' => 0];
+        } finally {
+            flock($file, LOCK_UN);
+            fclose($file);
+        }
+    }
+
+    private function defaultHealthStatePath(): string
+    {
+        $key = substr(hash('sha256', $this->projectKey . '|' . $this->healthEndpoint), 0, 24);
+        return rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . "pantree-health-{$key}.json";
     }
 
     // ---------------------------------------------------------------- auto-context enrichment
