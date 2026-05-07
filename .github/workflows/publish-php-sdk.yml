@@ -38,13 +38,17 @@ jobs:
               fwrite(STDERR, "Invalid composer.json\n");
               exit(1);
           }
-          $current = $json["version"] ?? "1.0.1";
+          $current = $json["version"] ?? "1.0.10";
           if (!preg_match("/^\d+\.\d+\.\d+$/", $current)) {
               fwrite(STDERR, "version must be semver (x.y.z), got: {$current}\n");
               exit(1);
           }
           [$major, $minor, $patch] = array_map("intval", explode(".", $current));
-          $next = "{$major}.{$minor}." . ($patch + 1);
+          if ($major < 1 || ($major === 1 && $minor === 0 && $patch < 10)) {
+              $next = "1.0.10";
+          } else {
+              $next = "{$major}.{$minor}." . ($patch + 1);
+          }
           $json["version"] = $next;
           $encoded = json_encode($json, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . PHP_EOL;
           file_put_contents($path, $encoded);
