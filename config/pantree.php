@@ -68,10 +68,10 @@ return [
     |--------------------------------------------------------------------------
     | Reject when too soon
     |--------------------------------------------------------------------------
+    | false => sendHealthReport() quietly skips and returns skipped=true
     | true  => sendHealthReport() returns 429-like response when throttled
-    | false => sendHealthReport() silently skips and returns skipped=true
     */
-    'health_reject_too_soon' => (bool) env('PANTREE_HEALTH_REJECT_TOO_SOON', true),
+    'health_reject_too_soon' => (bool) env('PANTREE_HEALTH_REJECT_TOO_SOON', false),
 
     /*
     |--------------------------------------------------------------------------

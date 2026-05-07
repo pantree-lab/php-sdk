@@ -107,7 +107,8 @@ $pantree = PantreeClient::fromDsn(
 ```env
 PANTREE_DSN=https://pk_abc123:sk_xyz789@your-pantree.com/api/ingest
 PANTREE_ENVIRONMENT=production      # defaults to app()->environment()
-PANTREE_HEALTH_REPORTING=true       # enable auto health reports every 30 min
+PANTREE_HEALTH_REPORTING=true       # enable auto health reports every 10 min
+PANTREE_HEALTH_MIN_INTERVAL_SECONDS=600
 PANTREE_DEBUG=false
 ```
 
@@ -205,7 +206,7 @@ $pantree->send([
 
 ## Health Reporting
 
-Collects OS, memory, disk, network, machine ID, container detection, and Git info — encrypted with **AES-256-GCM** before sending.
+Collects OS, memory, disk, network, machine ID, container detection, and Git info — encrypted with **AES-256-GCM** before sending. The SDK stores the last health report timestamp and sends at most one report every 10 minutes by default, even if `sendHealthReport()` is called from Laravel `boot()` or another hot path.
 
 ### Raw PHP — cron script
 
@@ -224,7 +225,7 @@ echo $result['status'] === 200 ? "OK\n" : "Failed\n";
 Crontab:
 
 ```cron
-*/30 * * * *  php /path/to/your/project/cron-health.php >> /var/log/pantree-health.log 2>&1
+*/10 * * * *  php /path/to/your/project/cron-health.php >> /var/log/pantree-health.log 2>&1
 ```
 
 ### Laravel — automatic scheduler
