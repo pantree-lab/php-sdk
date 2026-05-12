@@ -1,7 +1,13 @@
 # pantree/pantree-php
 
 <p align="center">
-  <img src="../../../arts/250x250_without_brand_title.png" alt="Pantree logo" width="88" />
+  <a href="https://packagist.org/packages/pantree/pantree-php" title="View on Packagist">
+    <img src="./arts/250x250_without_brand_title.png" alt="Pantree" width="250" height="250" />
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://packagist.org/packages/pantree/pantree-php"><img src="https://img.shields.io/packagist/v/pantree/pantree-php.svg" alt="Packagist version" /></a>
 </p>
 
 Official PHP & Laravel SDK for [Pantree](https://pantree.dev) — error monitoring and encrypted health reporting.

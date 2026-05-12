@@ -1,5 +1,6 @@
 {
     "name": "pantree/pantree-php",
+  "version": "1.0.10",
     "description": "PHP & Laravel SDK for Pantree \u2014 error monitoring and encrypted health reporting",
     "type": "library",
     "license": "MIT",
